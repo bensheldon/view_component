@@ -50,6 +50,16 @@ module ViewComponent
       end
     end
 
+    initializer "view_component.activejob_support" do |_app|
+      ActiveSupport.on_load(:view_component) do
+        ActiveSupport.on_load(:active_job) do
+          require "view_component/active_job_serializer"
+          ViewComponent::Base.include ViewComponent::Serializable
+          ActiveJob::Serializers.add_serializers(ViewComponent::ActiveJobSerializer)
+        end
+      end
+    end
+
     config.after_initialize do |app|
       ActiveSupport.on_load(:view_component) do
         if defined?(Sprockets::Rails)

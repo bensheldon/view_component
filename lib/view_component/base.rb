@@ -10,6 +10,7 @@ require "view_component/errors"
 require "view_component/inline_template"
 require "view_component/preview"
 require "view_component/request_details"
+require "view_component/serializable"
 require "view_component/slotable"
 require "view_component/template"
 require "view_component/translatable"
@@ -70,6 +71,9 @@ module ViewComponent
 
     # Config option that strips trailing whitespace in templates before compiling them.
     class_attribute :__vc_strip_trailing_whitespace, instance_accessor: false, instance_predicate: false, default: false
+
+    # Configurable ancestor classes to ignore when introspecting method parameters
+    class_attribute :__ignored_parameter_ancestors, instance_accessor: false, instance_predicate: false, default: []
 
     attr_accessor :__vc_original_view_context
     attr_reader :current_template
@@ -704,7 +708,13 @@ module ViewComponent
       end
 
       def __vc_initialize_parameters
-        @__vc_initialize_parameters ||= instance_method(:initialize).parameters
+        @__vc_initialize_parameters ||= begin
+          m = instance_method(:initialize)
+          while m && __ignored_parameter_ancestors.include?(m.owner)
+            m = m.super_method
+          end
+          m&.parameters || [].freeze
+        end
       end
 
       def __vc_provided_collection_parameter
