@@ -717,6 +717,7 @@ module ViewComponent
       def with_collection_parameter(parameter)
         @__vc_provided_collection_parameter = parameter
         @__vc_initialize_parameters = nil
+        @__vc_initialize_methods = nil
       end
 
       # Strips trailing whitespace from templates before compiling them.
@@ -791,8 +792,16 @@ module ViewComponent
 
       private
 
+      # An anonymous `**` on a prepended module (e.g. one forwarding with `...`)
+      # passes keywords along to the component rather than accepting them.
       def __vc_splatted_keyword_argument_present?
-        __vc_initialize_parameters.flatten.include?(:keyrest)
+        prepended_modules = ancestors.grep(Class).flat_map { |klass| klass.ancestors.take_while { |mod| mod != klass } }
+
+        __vc_initialize_methods.any? do |method|
+          method.parameters.any? do |type, name|
+            type == :keyrest && (name != :** || !prepended_modules.include?(method.owner))
+          end
+        end
       end
 
       def __vc_initialize_parameter_names
@@ -805,7 +814,24 @@ module ViewComponent
       end
 
       def __vc_initialize_parameters
-        @__vc_initialize_parameters ||= instance_method(:initialize).parameters
+        @__vc_initialize_parameters ||= __vc_initialize_methods.flat_map(&:parameters)
+      end
+
+      # Walks up the `initialize` super chain (e.g. through prepended modules)
+      # while each method accepts `**`, stopping at the first method that
+      # accepts only the keywords it names.
+      def __vc_initialize_methods
+        @__vc_initialize_methods ||= begin
+          methods = []
+          method = instance_method(:initialize)
+          while method
+            methods << method
+            break unless method.parameters.any? { |type, _| type == :keyrest }
+
+            method = method.super_method
+          end
+          methods
+        end
       end
 
       def __vc_provided_collection_parameter
